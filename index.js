@@ -11,13 +11,13 @@ const postRoutes = require("./routes/postRoutes");
 app.use(express.json());
 app.use(cookieParser());
 app.set("pool", pool);
-app.get("/test", (req, res, next) => {
+app.get("/", (req, res, next) => {
   // console.log("TEST DATA :");
   // pool.query("Select * from test").then((testData) => {
   //   console.log(testData);
   //   res.send(testData.rows);
   // });
-  res.send("working");
+  res.send("Hello Reunion!");
 });
 app.use("/api", userRoutes);
 app.use("/api", followRoutes);
