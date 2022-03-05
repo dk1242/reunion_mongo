@@ -1,55 +1,80 @@
-const pool = require("../pool");
+const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
+const { errorHandler } = require("../helpers/dbErrorHandler");
 const expressJwt = require("express-jwt");
 
 exports.SignUp = (req, res) => {
   const { name, email, password } = req.body;
-
-  pool.query(
-    "INSERT INTO users (userId, name, email, password) VALUES (nextval('id_seq'), $1, $2, $3)",
-    [name, email, password],
-    (error, results) => {
-      if (error) {
-        console.log(error);
-        return res.send({ error: error.detail });
-      }
-      return res.status(201).json({ msg: "User created", results });
+  if (name == "") {
+    return res.send("Please write name");
+  }
+  if (email == "") {
+    return res.send("Please write email");
+  }
+  if (password == "") {
+    return res.send("Please write password");
+  }
+  User.findOne(email, (err, user) => {
+    if (user) {
+      return res.status(400).json({ msg: "user already exists" });
     }
-  );
+    user = new User({
+      name,
+      email,
+      password,
+    });
+    // console.log(user);
+    user.save((err, user) => {
+      if (err) {
+        // console.log("abc", err);
+        var error = errorHandler(err);
+        if (!error) error = "Problem in creating the account";
+        // console.log("a", error);
+        return res.status(400).json({
+          error,
+        });
+      }
+
+      return res.json({
+        user,
+      });
+      // res.json({
+      //   user,
+      // });
+    });
+  });
 };
 exports.Authenticate = (req, res) => {
   const { email, password } = req.body;
-  pool.query(
-    "select * from users where email=($1)",
-    [email],
-    (error, results) => {
-      if (error) {
-        return res.send({ error });
-      }
-      if (results.rowCount == 1) {
-        let user = results.rows[0];
-        if (password === user.password) {
-          const payload = {
-            user: {
-              id: user.userid,
-            },
-          };
-          const token = jwt.sign(payload, process.env.JWT_SECRET);
-          res.cookie("t", token, { expire: new Date() + 9999 });
-          req.profile = user;
-          console.log(req.profile);
-          return res.json({
-            token,
-            user,
-          });
-        }
-      } else {
-        return res.status(400).json({
-          message: "User not exist",
-        });
-      }
+
+  if (email == "") {
+    return res.send("Please write email");
+  }
+  if (password == "") {
+    return res.send("Please write password");
+  }
+  User.findOne({ email }, (err, user) => {
+    if (err || !user) {
+      return res.status(400).json({
+        error: "User with that email does not exist. Please signup",
+      });
     }
-  );
+    // console.log(user);
+    const isMatch = password === user.password;
+    if (!isMatch) {
+      return res.status(400).json({
+        error: "Incorrect Password !",
+      });
+    }
+    const payload = {
+      user: {
+        id: user._id,
+      },
+    };
+    const token = jwt.sign(payload, process.env.JWT_SECRET);
+    res.cookie("t", token, { expire: new Date() + 9999 });
+    return res.json({ token });
+  });
 };
 
 exports.requireSignin = expressJwt({
@@ -70,20 +95,16 @@ exports.isAuth = (req, res, next) => {
 };
 
 exports.read = (req, res) => {
-  let user;
-  pool.query(
-    "select * from users where userid=($1)",
-    [req.auth.user.id],
-    (error, results) => {
-      if (error) {
-        return res.send({ error });
-      }
-      user = results.rows[0];
-      return res.send({
-        name: user.name,
-        followers: user.followers,
-        following: user.following,
-      });
+  let userId = req.auth.user.id;
+  User.findById(userId, (error, user) => {
+    if (error) {
+      return res.send({ error });
     }
-  );
+    // console.log(user);
+    return res.send({
+      name: user.name,
+      followers: user.followersCount,
+      following: user.followingCount,
+    });
+  });
 };

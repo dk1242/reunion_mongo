@@ -1,149 +1,88 @@
-const pool = require("../pool");
+const User = require("../models/userModel");
 
 exports.followUser = (req, res, next) => {
   //   console.log(req.auth);
   //   console.log(req.params);
-  let user, userToFollow;
-  pool.query(
-    "select * from users where userid=($1)",
-    [req.auth.user.id],
-    (error, results) => {
+  let userId = req.auth.user.id,
+    userToFollowId = req.params.id;
+  if (userId === userToFollowId) {
+    return res.send({ msg: "You cannot follow yourself" });
+  }
+  User.findById(userId, (error, user) => {
+    if (error) {
+      return res.send({ error });
+    }
+    console.log(user.following);
+    User.findById(userToFollowId, (error, userToFollow) => {
       if (error) {
-        return res.send({ error });
+        console.log(error);
+        return res.send({ msg: "There is no user with this user id" });
       }
-      user = results.rows[0];
-      pool.query(
-        "select * from users where userid=($1)",
-        [req.params.id],
-        (err, resp) => {
+      if (!userToFollow) {
+        return res.send({ msg: "There is no user with this user id" });
+      }
+      let friend = user.following.find((id) => id == userToFollowId);
+      if (friend) {
+        return res.send({ msg: "You already follow this user" });
+      }
+      user.following.push(userToFollowId);
+      user.followingCount += 1;
+      user.save((err, resp) => {
+        userToFollow.followers.push(userId);
+        userToFollow.followersCount += 1;
+        userToFollow.save((err, resp) => {
           if (err) {
             return res.send(err);
           }
-          if (resp.rowCount == 0) {
-            return res.send({ msg: "There is no user with this user id" });
-          }
-          userToFollow = resp.rows[0];
-          if (user.userid === userToFollow.userid) {
-            return res.send({ msg: "You cannot follow yourself" });
-          }
-          pool.query(
-            "select * from follow where followerId=($1) and followingId=($2)",
-            [user.userid, userToFollow.userid],
-            (err, resp) => {
-              if (err) {
-                return res.send(err);
-              }
-              //   console.log(resp.rows.length, resp);
-              if (resp.rows.length) {
-                return res.send({ msg: "You already follow this user" });
-              }
-
-              pool.query(
-                "Insert into follow (followId, followerId, followingId) values (nextval('follow_seq'), $1, $2)",
-                [user.userid, userToFollow.userid],
-                (err, resp) => {
-                  if (err) {
-                    return res.send(err);
-                  }
-                  pool.query(
-                    "Update users set following=($1) where userid=($2)",
-                    [user.following + 1, user.userid],
-                    (err, resp) => {
-                      if (err) {
-                        return res.send(err);
-                      }
-                      pool.query(
-                        "Update users set followers=($1) where userid=($2)",
-                        [userToFollow.followers + 1, userToFollow.userid],
-                        (err, resp) => {
-                          if (err) {
-                            return res.send(err);
-                          }
-                          return res.send({ msg: "user followed" });
-                        }
-                      );
-                    }
-                  );
-                }
-              );
-            }
-          );
-        }
-      );
-    }
-  );
+          return res.send({ msg: "user followed" });
+        });
+      });
+    });
+  });
 };
 
 exports.unfollowUser = (req, res, next) => {
-  //   console.log(req.auth);
-  //   console.log(req.params);
-  let user, userTounFollow;
-  pool.query(
-    "select * from users where userid=($1)",
-    [req.auth.user.id],
-    (error, results) => {
+  let userId = req.auth.user.id,
+    userTounFollowId = req.params.id;
+  if (userId === userTounFollowId) {
+    return res.send({ msg: "You cannot follow/unfollow yourself" });
+  }
+  User.findById(userId, (error, user) => {
+    if (error) {
+      return res.send({ error });
+    }
+    // console.log(user.following);
+    User.findById(userTounFollowId, (error, userTounFollow) => {
       if (error) {
-        return res.send({ error });
+        console.log(error);
+        return res.send({ msg: "There is no user with this user id" });
       }
-      user = results.rows[0];
-      pool.query(
-        "select * from users where userid=($1)",
-        [req.params.id],
-        (err, resp) => {
+      if (!userTounFollow) {
+        return res.send({ msg: "There is no user with this user id" });
+      }
+      let friend = user.following.find((id) => id == userTounFollowId);
+      if (!friend) {
+        return res.send({ msg: "You don't follow this user" });
+      }
+      var index = user.following.indexOf(userTounFollowId);
+      if (index !== -1) {
+        user.following.splice(index, 1);
+      }
+      if (user.followingCount > 0) user.followingCount -= 1;
+      user.save((err, resp) => {
+        var index = userTounFollow.followers.indexOf(userId);
+        if (index !== -1) {
+          userTounFollow.followers.splice(index, 1);
+        }
+        if (userTounFollow.followersCount > 0)
+          userTounFollow.followersCount -= 1;
+        userTounFollow.save((err, resp) => {
           if (err) {
             return res.send(err);
           }
-          if (resp.rowCount == 0) {
-            return res.send({ msg: "There is no user with this user id" });
-          }
-          userTounFollow = resp.rows[0];
-          if (user.userid === userTounFollow.userid) {
-            return res.send({ msg: "You cannot unfollow yourself" });
-          }
-          pool.query(
-            "select * from follow where followerId=($1) and followingId=($2)",
-            [user.userid, userTounFollow.userid],
-            (err, resp) => {
-              if (err) {
-                return res.send(err);
-              }
-              //   console.log(resp.rows.length, resp);
-              if (resp.rowCount == 0) {
-                return res.send({ msg: "You didn't follow this user" });
-              }
-
-              pool.query(
-                "Delete from follow where followerId=($1) and followingId=($2)",
-                [user.userid, userTounFollow.userid],
-                (err, resp) => {
-                  if (err) {
-                    return res.send(err);
-                  }
-                  pool.query(
-                    "Update users set following=($1) where userid=($2)",
-                    [user.following - 1, user.userid],
-                    (err, resp) => {
-                      if (err) {
-                        return res.send(err);
-                      }
-                      pool.query(
-                        "Update users set followers=($1) where userid=($2)",
-                        [userTounFollow.followers - 1, userTounFollow.userid],
-                        (err, resp) => {
-                          if (err) {
-                            return res.send(err);
-                          }
-                          return res.send({ msg: "user unfollowed" });
-                        }
-                      );
-                    }
-                  );
-                }
-              );
-            }
-          );
-        }
-      );
-    }
-  );
+          return res.send({ msg: "user unfollowed" });
+        });
+      });
+    });
+  });
 };
